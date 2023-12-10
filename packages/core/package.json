@@ -1,0 +1,40 @@
+{
+  "name": "@cordisjs/loader",
+  "description": "Server plugin for cordis",
+  "version": "0.1.0",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "author": "Shigma <shigma10826@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cordisjs/loader.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/cordisjs/loader/issues"
+  },
+  "homepage": "https://github.com/cordisjs/loader",
+  "keywords": [
+    "cordis",
+    "loader",
+    "config",
+    "bootstrap",
+    "service"
+  ],
+  "devDependencies": {
+    "@cordisjs/logger": "^0.1.2",
+    "cordis": "^3.4.0"
+  },
+  "peerDependencies": {
+    "cordis": "^3.4.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -1,15 +1,16 @@
 import Loader from '@cordisjs/loader'
+import * as assert from 'assert'
 import * as daemon from './daemon'
 import * as logger from './logger'
 
-export interface StartOptions {
-  logger?: any
-  daemon?: boolean
+export interface Options extends Loader.Options {
+  logger?: logger.Config
+  daemon?: daemon.Config
 }
 
-export async function start(name: string, options: StartOptions = {}) {
-  const loader = new Loader(name)
-  await loader.init(process.env.KOISHI_CONFIG_FILE)
+export async function main(options: Options) {
+  const loader = new Loader(options)
+  await loader.init(process.env.CORDIS_LOADER_ENTRY)
   if (options.logger) loader.app.plugin(logger)
   if (options.daemon) loader.app.plugin(daemon)
   await loader.readConfig()
@@ -17,5 +18,6 @@ export async function start(name: string, options: StartOptions = {}) {
 }
 
 if (require.main === module) {
-  start(process.env.CORDIS_APP!)
+  assert.ok(process.env.CORDIS_LOADER_OPTIONS)
+  main(JSON.parse(process.env.CORDIS_LOADER_OPTIONS))
 }

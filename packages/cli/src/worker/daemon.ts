@@ -1,6 +1,7 @@
 import { Context } from 'cordis'
 
 export interface Config {
+  execArgv?: string[]
   autoRestart?: boolean
   heartbeatInterval?: number
   heartbeatTimeout?: number

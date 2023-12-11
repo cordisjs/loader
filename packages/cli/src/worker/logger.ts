@@ -10,9 +10,8 @@ declare module '@cordisjs/loader' {
 interface LogLevelConfig {
   // a little different from @koishijs/utils
   // we don't enforce user to provide a base here
-  // @ts-ignore
   base?: number
-  [K: string]: LogLevel
+  [K: string]: LogLevel | undefined
 }
 
 type LogLevel = number | LogLevelConfig
@@ -63,8 +62,8 @@ export function apply(ctx: Context, config: Config = {}) {
   Logger.targets[0].showDiff = config.showDiff
 
   // cli options have higher precedence
-  if (process.env.KOISHI_LOG_LEVEL) {
-    Logger.levels.base = +process.env.KOISHI_LOG_LEVEL
+  if (process.env.CORDIS_LOG_LEVEL) {
+    Logger.levels.base = +process.env.CORDIS_LOG_LEVEL
   }
 
   function ensureBaseLevel(config: Logger.LevelConfig, base: number) {
@@ -77,8 +76,8 @@ export function apply(ctx: Context, config: Config = {}) {
 
   ensureBaseLevel(Logger.levels, 2)
 
-  if (process.env.KOISHI_DEBUG) {
-    for (const name of process.env.KOISHI_DEBUG.split(',')) {
+  if (process.env.CORDIS_LOG_DEBUG) {
+    for (const name of process.env.CORDIS_LOG_DEBUG.split(',')) {
       new Logger(name).level = Logger.DEBUG
     }
   }

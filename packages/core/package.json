@@ -1,7 +1,7 @@
 {
   "name": "@cordisjs/loader",
   "description": "Server plugin for cordis",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -34,6 +34,7 @@
     "cordis": "^3.4.0"
   },
   "dependencies": {
+    "cosmokit": "^1.5.1",
     "dotenv": "^16.3.1",
     "js-yaml": "^4.1.0"
   }

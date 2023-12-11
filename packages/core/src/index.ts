@@ -14,7 +14,17 @@ for (const key in require.extensions) {
 
 const initialKeys = Object.getOwnPropertyNames(process.env)
 
-export default class NodeLoader extends Loader {
+namespace NodeLoader {
+  export interface Options extends Loader.Options {}
+}
+
+function inferInputType() {
+  if (typeof require !== 'undefined' && typeof module !== 'undefined') return 'commonjs'
+  return 'module'
+}
+
+class NodeLoader extends Loader<NodeLoader.Options> {
+  public inputType = inferInputType()
   public localKeys: string[] = []
 
   async readConfig() {
@@ -45,12 +55,14 @@ export default class NodeLoader extends Loader {
 
   async import(name: string) {
     try {
-      this.cache[name] ||= require.resolve(name)
+      if (this.inputType === 'commonjs') {
+        return require(name)
+      } else {
+        return await import(name)
+      }
     } catch (err: any) {
       logger.error(err.message)
-      return
     }
-    return require(this.cache[name])
   }
 
   fullReload(code = Loader.exitCode) {
@@ -62,3 +74,5 @@ export default class NodeLoader extends Loader {
     })
   }
 }
+
+export default NodeLoader

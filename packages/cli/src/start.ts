@@ -1,4 +1,4 @@
-import { Dict, hyphenate, isInteger } from '@koishijs/utils'
+import { Dict, hyphenate } from 'cosmokit'
 import { ChildProcess, fork } from 'child_process'
 import { resolve } from 'path'
 import { CAC } from 'cac'
@@ -105,6 +105,10 @@ function setEnvArg(name: string, value: string | boolean) {
 export function start(name: string) {
   const { start } = require('./worker') as typeof import('./worker')
   start(name)
+}
+
+export function isInteger(source: any) {
+  return typeof source === 'number' && Math.floor(source) === source
 }
 
 export default function (cli: CAC) {

@@ -1,6 +1,5 @@
 import { Context, EffectScope, ForkScope } from 'cordis'
 import { Dict, isNullable, valueMap } from 'cosmokit'
-import { Logger } from '@cordisjs/logger'
 import { constants, promises as fs } from 'fs'
 import { interpolate } from './utils'
 import * as yaml from 'js-yaml'
@@ -10,6 +9,7 @@ declare module 'cordis' {
   interface Events {
     'config'(): void
     'exit'(signal: NodeJS.Signals): Promise<void>
+    'loader/update'(this: Context, type: string, entry: Entry): void
   }
 
   interface Context {
@@ -46,7 +46,13 @@ const writable = {
   '.yml': 'application/yaml',
 }
 
-export abstract class Loader {
+export namespace Loader {
+  export interface Options {
+    name: string
+  }
+}
+
+export abstract class Loader<T extends Loader.Options = Loader.Options> {
   static readonly exitCode = 51
   static readonly extensions = new Set(Object.keys(writable))
 
@@ -68,16 +74,14 @@ export abstract class Loader {
   public filename!: string
   public envFiles!: string[]
   public names = new Set<string>()
-  public forks: Dict<ForkScope> = Object.create(null)
-  public cache: Dict<string> = Object.create(null)
-  public prolog: Logger.Record[] = []
+  public forks: Dict<[Entry, ForkScope?]> = Object.create(null)
 
   private store = new WeakMap<any, string>()
 
   abstract import(name: string): Promise<any>
   abstract fullReload(code?: number): void
 
-  constructor(public name: string) {
+  constructor(public options: T) {
     this.app = new Context()
   }
 
@@ -115,9 +119,10 @@ export abstract class Loader {
   private async findConfig() {
     const files = await fs.readdir(this.baseDir)
     for (const extname of Loader.extensions) {
-      if (files.includes(this.name + extname)) {
+      const filename = this.options.name + extname
+      if (files.includes(filename)) {
         this.mime = writable[extname]
-        this.filename = path.resolve(this.baseDir, this.name + extname)
+        this.filename = path.resolve(this.baseDir, filename)
         return
       }
     }
@@ -187,36 +192,32 @@ export abstract class Loader {
     return !!this.interpolate(`\${{ ${expr} }}`)
   }
 
-  private logUpdate(type: string, parent: Context, name: string) {
-    this.app.emit('internal/info', '%s plugin %c', type, name)
-  }
-
   async reload(parent: Context, entry: Entry) {
     let fork = this.forks[entry.id]
-    if (fork) {
+    if (fork?.[1]) {
       if (!this.isTruthyLike(entry.when)) {
         this.unload(parent, entry)
         return
       }
-      fork[kUpdate] = true
-      fork.update(entry.config)
+      fork[1][kUpdate] = true
+      fork[1].update(entry.config)
     } else {
       if (!this.isTruthyLike(entry.when)) return
-      this.logUpdate('apply', parent, entry.name)
+      this.app.emit(parent, 'loader/update', 'apply', entry)
       const plugin = await this.resolve(entry.name)
       if (!plugin) return
       const ctx = parent.extend()
-      fork = ctx.plugin(plugin, this.interpolate(entry.config))
-      fork.id = entry.id
+      fork = [entry, ctx.plugin(plugin, this.interpolate(entry.config))]
+      fork[1]!.id = entry.id
     }
-    return fork
+    return fork[1]
   }
 
-  unload(ctx: Context, entry: Entry) {
+  unload(parent: Context, entry: Entry) {
     const fork = this.forks[entry.id]
-    if (fork) {
-      this.logUpdate('unload', ctx, entry.name)
-      fork.dispose()
+    if (fork?.[1]) {
+      this.app.emit(parent, 'loader/update', 'unload', entry)
+      fork[1].dispose()
     }
   }
 
@@ -234,11 +235,10 @@ export abstract class Loader {
   }
 
   async createApp() {
-    // new Logger('app').info('%C', `Koishi/${version}`)
     this.app.provide('loader', this, true)
     this.app.provide('baseDir', this.baseDir, true)
     for (const entry of this.config) {
-      this.reload(this.app, entry)
+      await this.reload(this.app, entry)
     }
 
     this.app.on('dispose', () => {
@@ -246,7 +246,9 @@ export abstract class Loader {
     })
 
     this.app.on('internal/update', (fork) => {
-      if (fork.id) this.logUpdate('reload', fork.parent, fork.id)
+      const data = this.forks[fork.id!]
+      if (!data) return
+      this.app.emit(fork.parent, 'loader/update', 'reload', data[0])
     })
 
     this.app.on('internal/before-update', (fork, config) => {

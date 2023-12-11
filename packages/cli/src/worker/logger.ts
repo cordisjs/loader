@@ -1,6 +1,12 @@
 import { Logger } from '@cordisjs/logger'
 import { Context } from 'cordis'
 
+declare module '@cordisjs/loader' {
+  interface Loader {
+    prolog: Logger.Record[]
+  }
+}
+
 interface LogLevelConfig {
   // a little different from @koishijs/utils
   // we don't enforce user to provide a base here
@@ -18,6 +24,23 @@ export interface Config {
 }
 
 export function apply(ctx: Context, config: Config = {}) {
+  function handleException(error: any) {
+    new Logger('app').error(error)
+    process.exit(1)
+  }
+
+  process.on('uncaughtException', handleException)
+
+  process.on('unhandledRejection', (error) => {
+    new Logger('app').warn(error)
+  })
+
+  ctx.on('loader/update', (type, entry) => {
+    new Logger('loader').info('%s plugin %c', type, entry.name)
+  })
+
+  ctx.loader.prolog = []
+
   Logger.targets.push({
     colors: 3,
     record: (record) => {

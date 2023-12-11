@@ -2,52 +2,44 @@ import { Logger } from '@cordisjs/logger'
 import { Loader } from './shared'
 import { promises as fs } from 'fs'
 import * as dotenv from 'dotenv'
+import * as path from 'path'
 
 export * from './shared'
 
 const logger = new Logger('app')
 
-// eslint-disable-next-line n/no-deprecated-api
-for (const key in require.extensions) {
-  Loader.extensions.add(key)
-}
-
-const initialKeys = Object.getOwnPropertyNames(process.env)
+const oldEnv = { ...process.env }
 
 namespace NodeLoader {
-  export interface Options extends Loader.Options {}
-}
-
-function inferInputType() {
-  if (typeof require !== 'undefined' && typeof module !== 'undefined') return 'commonjs'
-  return 'module'
+  export interface Options extends Loader.Options {
+    type?: 'commonjs' | 'module' | 'vm-module'
+  }
 }
 
 class NodeLoader extends Loader<NodeLoader.Options> {
-  public inputType = inferInputType()
-  public localKeys: string[] = []
-
   async readConfig() {
-    // remove local env variables
-    for (const key of this.localKeys) {
-      delete process.env[key]
+    // restore process.env
+    for (const key in process.env) {
+      if (key in oldEnv) {
+        process.env[key] = oldEnv[key]
+      } else {
+        delete process.env[key]
+      }
     }
 
-    // load env files
-    const parsed = {}
-    for (const filename of this.envFiles) {
+    // load .env files
+    const override = {}
+    const envFiles = ['.env', '.env.local']
+    for (const filename of envFiles) {
       try {
-        const raw = await fs.readFile(filename, 'utf8')
-        Object.assign(parsed, dotenv.parse(raw))
+        const raw = await fs.readFile(path.resolve(this.baseDir, filename), 'utf8')
+        Object.assign(override, dotenv.parse(raw))
       } catch {}
     }
 
-    // write local env into process.env
-    this.localKeys = []
-    for (const key in parsed) {
-      if (initialKeys.includes(key)) continue
-      process.env[key] = parsed[key]
-      this.localKeys.push(key)
+    // override process.env
+    for (const key in override) {
+      process.env[key] = override[key]
     }
 
     return await super.readConfig()
@@ -55,10 +47,10 @@ class NodeLoader extends Loader<NodeLoader.Options> {
 
   async import(name: string) {
     try {
-      if (this.inputType === 'commonjs') {
-        return require(name)
-      } else {
+      if (this.options.type === 'module') {
         return await import(name)
+      } else {
+        return require(name)
       }
     } catch (err: any) {
       logger.error(err.message)

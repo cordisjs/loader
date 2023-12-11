@@ -46,15 +46,20 @@ const writable = {
   '.yml': 'application/yaml',
 }
 
+interface State {
+  entry: Entry
+  fork?: ForkScope
+}
+
 export namespace Loader {
   export interface Options {
     name: string
+    mutable?: boolean
   }
 }
 
 export abstract class Loader<T extends Loader.Options = Loader.Options> {
   static readonly exitCode = 51
-  static readonly extensions = new Set(Object.keys(writable))
 
   // process
   public baseDir = process.cwd()
@@ -72,10 +77,10 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
   public writable = false
   public mime!: string
   public filename!: string
-  public envFiles!: string[]
   public names = new Set<string>()
-  public forks: Dict<[Entry, ForkScope?]> = Object.create(null)
+  public states: Dict<State> = Object.create(null)
 
+  private tasks = new Set<Promise<any>>()
   private store = new WeakMap<any, string>()
 
   abstract import(name: string): Promise<any>
@@ -94,7 +99,8 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
         this.baseDir = path.dirname(filename)
         const extname = path.extname(filename)
         this.mime = writable[extname]
-        if (!Loader.extensions.has(extname)) {
+        // eslint-disable-next-line n/no-deprecated-api
+        if (!(extname in { ...writable, ...require.extensions })) {
           throw new Error(`extension "${extname}" not supported`)
         }
       } else {
@@ -110,15 +116,12 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
         this.writable = true
       } catch {}
     }
-    this.envFiles = [
-      path.resolve(this.baseDir, '.env'),
-      path.resolve(this.baseDir, '.env.local'),
-    ]
   }
 
   private async findConfig() {
     const files = await fs.readdir(this.baseDir)
-    for (const extname of Loader.extensions) {
+    // eslint-disable-next-line n/no-deprecated-api
+    for (const extname in { ...writable, ...require.extensions }) {
       const filename = this.options.name + extname
       if (files.includes(filename)) {
         this.mime = writable[extname]
@@ -168,14 +171,16 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
   }
 
   async resolve(name: string) {
-    const plugin = unwrapExports(await this.import(name))
+    const task = this.import(name)
+    this.tasks.add(task)
+    task.then(() => this.tasks.delete(task))
+    const plugin = unwrapExports(await task)
     if (plugin) this.store.set(this.app.registry.resolve(plugin), name)
     return plugin
   }
 
   keyFor(plugin: any) {
-    const name = this.store.get(this.app.registry.resolve(plugin))
-    if (name) return name.replace(/(koishi-|^@koishijs\/)plugin-/, '')
+    return this.store.get(this.app.registry.resolve(plugin))
   }
 
   replace(oldKey: any, newKey: any) {
@@ -193,31 +198,33 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
   }
 
   async reload(parent: Context, entry: Entry) {
-    let fork = this.forks[entry.id]
-    if (fork?.[1]) {
+    let state = this.states[entry.id]
+    if (state?.fork) {
       if (!this.isTruthyLike(entry.when)) {
         this.unload(parent, entry)
         return
       }
-      fork[1][kUpdate] = true
-      fork[1].update(entry.config)
+      state.fork[kUpdate] = true
+      state.fork.update(entry.config)
     } else {
       if (!this.isTruthyLike(entry.when)) return
       this.app.emit(parent, 'loader/update', 'apply', entry)
       const plugin = await this.resolve(entry.name)
       if (!plugin) return
       const ctx = parent.extend()
-      fork = [entry, ctx.plugin(plugin, this.interpolate(entry.config))]
-      fork[1]!.id = entry.id
+      state = {
+        entry,
+        fork: ctx.plugin(plugin, this.interpolate(entry.config)),
+      }
+      state.fork!.id = entry.id
     }
-    return fork[1]
   }
 
   unload(parent: Context, entry: Entry) {
-    const fork = this.forks[entry.id]
-    if (fork?.[1]) {
+    const state = this.states[entry.id]
+    if (state?.fork) {
       this.app.emit(parent, 'loader/update', 'unload', entry)
-      fork[1].dispose()
+      state.fork.dispose()
     }
   }
 
@@ -234,11 +241,11 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
     return this.paths(scope.parent.scope)
   }
 
-  async createApp() {
+  async start() {
     this.app.provide('loader', this, true)
     this.app.provide('baseDir', this.baseDir, true)
     for (const entry of this.config) {
-      await this.reload(this.app, entry)
+      this.reload(this.app, entry)
     }
 
     this.app.on('dispose', () => {
@@ -246,9 +253,9 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
     })
 
     this.app.on('internal/update', (fork) => {
-      const data = this.forks[fork.id!]
-      if (!data) return
-      this.app.emit(fork.parent, 'loader/update', 'reload', data[0])
+      const state = this.states[fork.id!]
+      if (!state) return
+      this.app.emit(fork.parent, 'loader/update', 'reload', state.entry)
     })
 
     this.app.on('internal/before-update', (fork, config) => {
@@ -258,5 +265,11 @@ export abstract class Loader<T extends Loader.Options = Loader.Options> {
       fork.parent.scope.config = schema ? schema.simplify(config) : config
       this.writeConfig()
     })
+
+    while (this.tasks.size) {
+      await Promise.all(this.tasks)
+    }
+
+    return this.app.start()
   }
 }

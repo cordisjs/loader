@@ -13,8 +13,7 @@ export async function start(name: string, options: StartOptions = {}) {
   if (options.logger) loader.app.plugin(logger)
   if (options.daemon) loader.app.plugin(daemon)
   await loader.readConfig()
-  await loader.createApp()
-  await loader.app.start()
+  await loader.start()
 }
 
 if (require.main === module) {

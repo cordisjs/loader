@@ -1,6 +1,6 @@
 {
   "name": "@cordisjs/loader",
-  "description": "Server plugin for cordis",
+  "description": "Loader for cordis",
   "version": "0.1.2",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

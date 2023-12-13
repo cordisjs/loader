@@ -1,7 +1,7 @@
 {
   "name": "@cordisjs/cli",
-  "description": "Server plugin for cordis",
-  "version": "0.1.2",
+  "description": "CLI for cordis loader",
+  "version": "0.2.0",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -28,7 +28,7 @@
     "cli"
   ],
   "dependencies": {
-    "@cordisjs/loader": "0.1.2",
+    "@cordisjs/loader": "0.2.0",
     "@cordisjs/logger": "^0.1.2",
     "cordis": "^3.4.0",
     "cosmokit": "^1.5.1"

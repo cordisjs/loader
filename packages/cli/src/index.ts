@@ -30,6 +30,7 @@ process.env.KOISHI_SHARED = JSON.stringify({
 
 function createWorker(options: Options) {
   let timer: 0 | NodeJS.Timeout | undefined
+  let started = false
 
   child = fork(resolve(__dirname, '../worker'), [], {
     execArgv: options.daemon?.execArgv,
@@ -41,6 +42,7 @@ function createWorker(options: Options) {
 
   child.on('message', (message: Event) => {
     if (message.type === 'start') {
+      started = true
       timer = options.daemon?.heartbeatTimeout && setTimeout(() => {
         console.log(kleur.red('daemon: heartbeat timeout'))
         child.kill('SIGKILL')
@@ -52,13 +54,29 @@ function createWorker(options: Options) {
     }
   })
 
-  function shouldExit(code: number) {
-    // start failed
-    if (!options) return true
+  // https://nodejs.org/api/process.html#signal-events
+  // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/signal
+  const signals: NodeJS.Signals[] = [
+    'SIGABRT',
+    'SIGBREAK',
+    'SIGBUS',
+    'SIGFPE',
+    'SIGHUP',
+    'SIGILL',
+    'SIGINT',
+    'SIGKILL',
+    'SIGSEGV',
+    'SIGSTOP',
+    'SIGTERM',
+  ]
 
-    // exit manually or by signal
-    // https://tldp.org/LDP/abs/html/exitcodes.html
-    if (code === 0 || code >= 128 && code < 128 + 16) return true
+  function shouldExit(code: number, signal: NodeJS.Signals) {
+    // start failed
+    if (!started) return true
+
+    // exit manually
+    if (code === 0) return true
+    if (signals.includes(signal)) return true
 
     // restart manually
     if (code === 51) return false
@@ -68,8 +86,8 @@ function createWorker(options: Options) {
     return !options.daemon?.autoRestart
   }
 
-  child.on('exit', (code) => {
-    if (shouldExit(code!)) {
+  child.on('exit', (code, signal) => {
+    if (shouldExit(code!, signal!)) {
       process.exit(code!)
     }
     createWorker(options)

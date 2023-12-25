@@ -1,5 +1,4 @@
 import Loader from '@cordisjs/loader'
-import * as assert from 'assert'
 import * as daemon from './daemon'
 import * as logger from './logger'
 
@@ -17,7 +16,6 @@ export async function main(options: Options) {
   await loader.start()
 }
 
-if (require.main === module) {
-  assert.ok(process.env.CORDIS_LOADER_OPTIONS)
+if (process.env.CORDIS_LOADER_OPTIONS) {
   main(JSON.parse(process.env.CORDIS_LOADER_OPTIONS))
 }
